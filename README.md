@@ -7,9 +7,9 @@
 
 ### Code:
 
-- `Project.rmd` includes all the code for data analysis
-- `CVMaster.r` includes the function for Cross Validation part (Detailed explanation for CVMaster is included in the classification models section)
-- `Project_Report.pdf` is the final report 
+- `Classification(LR_LDA_QDA_RF).rmd` includes all the code for data analysis
+- `Cross Validation.R` includes the function for Cross Validation part (Detailed explanation for CVMaster is included in the classification models section)
+- `Final Report.pdf` is the final report 
 
 ## Reproducibility
 
