@@ -1,0 +1,1732 @@
+---
+title: "STA521_Project2"
+author: "Camilla Yu, Shuo Wang"
+date: "11/7/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+library(ggplot2)
+library(tidyr)
+library(tidyverse)
+library(dplyr)
+library(caret)
+library(lda)
+library(ROCR)
+library(randomForest)
+```
+
+```{r}
+image1 <- read.table('image_data/imagem1.txt')
+image2 <- read.table('image_data/imagem2.txt')
+image3 <- read.table('image_data/imagem3.txt')
+```
+
+```{r}
+labels <- c("y", "x", "expert", "NDAI", "SD", "CORR", "DF", "CF", "BF", "AF", "AN")
+colnames(image1) <- labels
+colnames(image2) <- labels
+colnames(image3) <- labels
+image1 <- image1 %>% mutate(Image = 1)
+image2 <- image2 %>% mutate(Image = 2)
+image3 <- image3 %>% mutate(Image = 3)
+#Combine data
+images <- rbind(image1, image2, image3)
+```
+
+```{r}
+#plot unlabeled images
+ggplot(images, aes(x = x, y = y, color = AN)) + geom_point() +
+  facet_wrap(~Image) +
+  labs(title = "Figure 1: Unlabeled Images with AN Radiences")
+```
+
+b. 
+
+```{r}
+image1 %>% 
+  count(expert) %>%
+  mutate(prop = n / sum(n))
+```
+
+For image1, 37.25% pixels are clear, 28.63% pixels are unknown and 34.11% pixcels
+are cloudy.
+
+```{r}
+image2 %>% 
+  count(expert) %>%
+  mutate(prop = n / sum(n))
+```
+
+For image1, 43.78% pixels are clear, 38.46% pixels are unknown and 17.77% pixels
+are cloudy.
+
+```{r}
+image3 %>% 
+  count(expert) %>%
+  mutate(prop = n / sum(n))
+```
+
+For image1, 29.29% pixels are clear, 52.27% pixels are unknown and 18.44% pixels are cloudy.
+
+```{r}
+ggplot(images, aes(x = x, y = y, color = as.factor(expert))) +
+  geom_point() + facet_wrap(~Image) +
+  labs(title = "Figure 2: Expert Labeled Images") +
+  scale_color_discrete(name = "class", breaks = c("-1", "0", "1"), 
+                       labels = c("Clear", "Unknown", "Cloudy")) +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+clear region and cloudy region are seperated by unknown region
+Trend/Pattern: from three images above, points in the same class tend to cluster
+in the same area, which means that points in the same class are dependent with
+each other so that they are not independent identically distributed. 
+IID assumptions: NO, they are not independent identically distributed 
+
+c.
+
+i.
+
+```{r, message=FALSE, warning=FALSE}
+features <- images %>% dplyr::select(-c(x,y,Image))
+corr_feature <- cor(features)
+View(corr_feature)
+```
+
+```{r}
+num <- as.numeric(cor(features)[,1])[-1]
+corr_feature <- data.frame()
+```
+
+
+AN and AF, AN and BF, AF and BF, BF and CF, AF and CF, CF and DF are highly 
+correlated with each other, which indicates that we might get similar results 
+when we use them?
+
+ii.
+
+images together or one by one
+could we ploy the following?
+
+```{r}
+#filter cloudy and non-cloudy
+image1_c <- filter(image1, expert != 0)
+image2_c <- filter(image2, expert != 0)
+image3_c <- filter(image3, expert != 0)
+images_c <- rbind(image1_c, image2_c, image3_c)
+```
+
+```{r}
+ggplot(image1_c, aes(x = NDAI, y = y, color = as.factor(expert))) +
+  geom_point()
+```
+
+```{r}
+ggplot(image1_c, aes(x = CF, y = y, color = as.factor(expert))) +
+  geom_point()
+```
+
+```{r}
+image1_c_1 <- image1_c %>% filter(expert == -1) %>% select(-c(x, y, expert, Image))
+image1_c_2 <- image1_c %>% filter(expert == 1) %>% select(-c(x, y, expert, Image))
+```
+
+```{r}
+cov(image1_c_2)
+cov(image1_c_1)
+```
+
+```{r}
+library(QuantPsyc)
+
+#create dataset
+set.seed(0)
+
+#perform Multivariate normality test
+mult.norm(image1_c_1)$mult.test
+```
+
+
+```{r}
+image_c <- rbind(image1_c, image2_c, image3_c)
+```
+
+```{r}
+ndai <- lm(expert~NDAI, data = image_c)
+nadi_model <- summary(ndai)
+sd <- lm(expert~SD, data = image_c)
+sd_model <- summary(sd)
+corr <- lm(expert~CORR, data = image_c)
+corr_model <- summary(corr)
+df <- lm(expert~DF, data = image_c)
+df_model <- summary(df)
+cf <- lm(expert~CF, data = image_c)
+cf_model <- summary(cf)
+bf <- lm(expert~BF, data = image_c)
+bf_model <- summary(bf)
+af <- lm(expert~AF, data = image_c)
+af_model <- summary(af)
+an <- lm(expert~AN, data = image_c)
+an_model <- summary(an)
+```
+
+```{r}
+ndai_table <- data.frame(feature = "NDAI", R_square = nadi_model$r.squared)
+sd_table <- data.frame(feature = "SD", R_square = sd_model$r.squared)
+corr_table <- data.frame(feature = "CORR", R_square = corr_model$r.squared)
+df_table <- data.frame(feature = "DF", R_square = df_model$r.squared)
+cf_table <- data.frame(feature = "CF", R_square = cf_model$r.squared)
+bf_table <- data.frame(feature = "BF", R_square = bf_model$r.squared)
+af_table <- data.frame(feature = "AF", R_square = af_model$r.squared)
+an_table <- data.frame(feature = "AN", R_square = an_model$r.squared)
+```
+
+```{r}
+table <- rbind(ndai_table, sd_table, corr_table, df_table, cf_table, bf_table, af_table, an_table)
+```
+
+```{r}
+View(table)
+```
+
+```{r}
+table
+```
+
+
+```{r}
+names <- c(`-1` = "Clear", `1` = "Cloudy")
+```
+
+```{r}
+ggplot(image3_c, aes(x = x, y = y, z = AF)) +
+         stat_contour(geom = "polygon", aes(fill = ..level..)) +
+         geom_tile(aes(fill = AF)) + facet_grid(~expert, labeller = as_labeller(names)) + 
+  labs(title = "Figure 8: AF Values for Two Classes in Image 3",
+       fill = "AF") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r}
+ggplot(images_c, aes(x = NDAI, y = x, color = as.factor(expert))) +
+  geom_point(alpha = 0.2)
+```
+
+```{r}
+ggplot(images_c, aes(x = NDAI)) + 
+  geom_density(aes(group = as.factor(expert), fill = as.factor(expert)),
+               alpha = 0.5) + 
+  facet_wrap(~Image) + 
+  scale_color_discrete(breaks = c(-1, 1), 
+                       labels = c("Clear", "Cloudy"))
+```
+
+```{r}
+#combine all images and separate blocks
+range_x <- max(images$x) - min(images$x)
+range_y <- max(images$y) - min(images$y)
+cutoff <- seq(min(images$y), max(images$y), length.out = 10)
+```
+
+```{r}
+#first method 
+block1 <- images %>% filter(y >= cutoff[1] & y < cutoff[2]) %>% mutate(block = 1)
+block2 <- images %>% filter(y >= cutoff[2] & y < cutoff[3]) %>% mutate(block = 2)
+block3 <- images %>% filter(y >= cutoff[3] & y < cutoff[4]) %>% mutate(block = 3)
+block4 <- images %>% filter(y >= cutoff[4] & y < cutoff[5]) %>% mutate(block = 4)
+block5 <- images %>% filter(y >= cutoff[5] & y < cutoff[6]) %>% mutate(block = 5)
+block6 <- images %>% filter(y >= cutoff[6] & y < cutoff[7]) %>% mutate(block = 6)
+block7 <- images %>% filter(y >= cutoff[7] & y < cutoff[8]) %>% mutate(block = 7)
+block8 <- images %>% filter(y >= cutoff[8] & y < cutoff[9]) %>% mutate(block = 8)
+block9 <- images %>% filter(y >= cutoff[9] & y < cutoff[10]) %>% mutate(block = 9)
+blocks_combined <- rbind(block1, block2, block3, block4, block5, block6, block7, block8, block9)
+```
+
+### 2.a
+
+For the first method, before separating three images, we combine three images together
+as our complete dataset, and then separate it into 9 blocks in according to y
+axis by using the stepsize of the range of y divided by 9. For the second method,
+we separate each image into 9 blocks in according to y axis. And randomly pick 2 
+blocks from each image as our test dataset and validation dataset, and then combine
+all left blocks as our training dataset.
+
+```{r}
+#first method train, test and validate
+set.seed(111)
+c <- 1:9
+test_index <- sample(c, size = 1)
+test_data1 <- blocks_combined %>% filter(block == test_index)
+c <- c[-test_index]
+valid_index <- sample(c, size = 1)
+valid_data1 <- blocks_combined %>% filter(block == valid_index)
+train_data1 <- blocks_combined %>% filter(block != valid_index) %>% filter(block != test_index)
+```
+
+```{r}
+#2b accuracy of a trivial classifier
+#accuracy for valid set
+valid_data1 %>% 
+  count(expert) %>%
+  mutate(p = n/sum(n))
+```
+
+```{r}
+#accuracy for test set
+test_data1 %>% 
+  count(expert) %>%
+  mutate(p = n/sum(n))
+```
+
+```{r}
+#second method
+blocks <- function(data) {
+  block1 <- data %>% filter(y >= cutoff[1]) %>% filter(y < cutoff[2]) %>% mutate(block = "1")
+  block2 <- data %>% filter(y >= cutoff[2]) %>% filter(y < cutoff[3]) %>% mutate(block = "2")
+  block3 <- data %>% filter(y >= cutoff[3]) %>% filter(y < cutoff[4]) %>% mutate(block = "3")
+  block4 <- data %>% filter(y >= cutoff[4]) %>% filter(y < cutoff[5]) %>% mutate(block = "4")
+  block5 <- data %>% filter(y >= cutoff[5]) %>% filter(y < cutoff[6]) %>% mutate(block = "5")
+  block6 <- data %>% filter(y >= cutoff[6]) %>% filter(y < cutoff[7]) %>% mutate(block = "6")
+  block7 <- data %>% filter(y >= cutoff[7]) %>% filter(y < cutoff[8]) %>% mutate(block = "7")
+  block8 <- data %>% filter(y >= cutoff[8]) %>% filter(y < cutoff[9]) %>% mutate(block = "8")
+  block9 <- data %>% filter(y >= cutoff[9]) %>% filter(y < cutoff[10]) %>% mutate(block = "9")
+  return(list(block1, block2, block3, block4, block5, block6, block7, block8, block9))
+}
+```
+
+```{r}
+#9 blocks for each image
+image1_blocks <- blocks(image1)
+image2_blocks <- blocks(image2)
+image3_blocks <- blocks(image3)
+```
+
+```{r}
+#second method train, test and validate
+set.seed(112)
+c <- 1:9
+test1_index <- sample(c, size = 1)
+test2_index <- sample(c, size = 1)
+test3_index <- sample(c, size = 1)
+image1_test <- image1_blocks[[test1_index]]
+image2_test <- image2_blocks[[test2_index]]
+image3_test <- image3_blocks[[test3_index]]
+c1 <- c[-test1_index]
+c2 <- c[-test2_index]
+c3 <- c[-test3_index]
+valid1_index <- sample(c1, size = 1)
+valid2_index <- sample(c2, size = 1)
+valid3_index <- sample(c3, size = 1)
+image1_valid <- image1_blocks[[valid1_index]]
+image2_valid <- image2_blocks[[valid2_index]]
+image3_valid <- image3_blocks[[valid3_index]]
+valid_data2 <- rbind(image1_valid, image2_valid, image3_valid)
+test_data2 <- rbind(image1_test, image2_test, image3_test)
+```
+
+```{r}
+#2b accuracy of a trivial classifier
+#accuracy for valid set
+valid_data2 %>% 
+  count(expert) %>%
+  mutate(p = n/sum(n))
+```
+
+```{r}
+#accuracy for test set
+test_data2 %>% 
+  count(expert) %>%
+  mutate(p = n/sum(n))
+```
+### 2.b
+
+For the first method:
+The accuracy of the trivial classifier on the validation set is 0.3162.
+The accuracy of the trivial classifier on the test set is 0.3715.
+For the second method:
+The accuracy of the trivial classifier on the validation set is 0.2699.
+The accuracy of the trivial classifier on the test set is 0.5520.
+When the validation dataset and test dataset include many cloud-free points, then
+this trivial classifier has high accuracy. Or when we use the most frequentist 
+class appeared in the validation dataset and test dataset as our trivial classifier,
+the accuracy for the classifier will be high.
+
+```{r}
+#separate images into blocks one by one
+separate <- function(image) {
+  ymin <- min(image$y)
+  ymax <- max(image$y)
+  #Each block
+  blocks <- replicate(1*9, data.frame())
+  cutoff_y <- ceiling((ymax - ymin)/9)
+  for (i in 1:9) {
+    blocks[[i]] <- image %>% filter(y >= ymin + (i-1)*cutoff_y, 
+                                    y < ymin + i*cutoff_y) %>% mutate(block = i)
+  }
+  return(blocks)
+}
+```
+
+```{r}
+set.seed(123)
+data <- separate(images)
+test_index_true <- sample(1:9, size = 1)
+test_data <- data[test_index_true]
+train_data <- data[-test_index_true]
+```
+
+```{r}
+#Prediction and true labels
+pred_expert <- function(model_fit, newdata) {
+  pred <- predict(model_fit, type="prob", newdata = newdata)
+  pred <- data.frame(x = newdata$x,
+                     y = newdata$y,
+                     p = pred$pos[,2],
+                     label = newdata$expert)
+  return(pred)
+}
+```
+
+```{r}
+#ROC 
+roc_fun <- function(model_fit, valid_data, valid_expert) {
+  #probability for being classified as the first class
+  probs <- predict(model_fit, type = "prob", newdata = valid_data)$posterior[,2]
+  #prepare for rocr
+  pred_rocr <- prediction(probs, valid_expert)
+  #TPR and FPR
+  roc <- performance(pred_rocr, "tpr", "fpr")
+  #store as data frame
+  roc <- data.frame(FPR = unlist(roc@x.values),
+                    TPR = unlist(roc@y.values),
+                    threshold = unlist(roc@alpha.values))
+  auc <- performance(pred_rocr, "auc")
+  auc <- auc@y.values
+  auc <- unlist(auc)
+  
+  return(list(roc = roc, auc = auc))
+}
+```
+
+```{r}
+set.seed(123)
+test_index1 <- sample(1:4, size = 1)
+test1 <- separate(image1)[[test_index1]]
+test_index2 <- sample(1:4, size = 1)
+test2 <- separate(image2)[[test_index2]]
+test_index3 <- sample(1:4, size = 1)
+test3 <- separate(image3)[[test_index3]]
+test_data_true <- rbind(test1, test2, test3) %>% filter(expert != 0)  %>%
+  select(-c(x, y))
+```
+
+```{r}
+train1 <- separate(image1)[-test_index1]
+train2 <- separate(image2)[-test_index2]
+train3 <- separate(image3)[-test_index3]
+```
+
+```{r}
+bind <- function (data){
+  train <- data.frame()
+  for (i in 1:8) {
+    train <- rbind(train, data[[i]])
+  }
+  return(train)
+}
+```
+
+```{r}
+bind1 <- bind(train1)
+bind2 <- bind(train2)
+bind3 <- bind(train3)
+```
+
+```{r}
+train_data_true <- rbind(bind1, bind2, bind3) %>% filter(expert != 0) %>%
+  select(-c(x, y, Image))
+```
+
+```{r}
+set.seed(123)
+folds <- createFolds(unique(train_data_true$block), k = 3)
+group_index <- folds[[1]]
+validation_index <- train_data_true$block %in% unique(train_data_true$block)[group_index]
+validation_feature <- train_data_true[validation_index, -ncol(train_data_true)]
+```
+
+```{r}
+validation_feature
+```
+
+```{r}
+feature_selection <- function(image_data) {
+  class <- filter(image_data, expert != 0)
+  expert <- dplyr::select(class, expert)
+  features <- dplyr::select(image_data, NDAI, SD, CORR, DF, CF, BF, AF, AN)
+  return(list(expert = expert, features = features))
+}
+```
+
+```{r}
+separate <- function(image, blocks){
+  ymin <- min(image$y)
+  ymax <- max(image$y)
+  
+  image_blocks <- replicate(blocks, data.frame())
+  cutoff_y <- ceiling((ymax-ymin)/blocks)
+  
+  for (i in 1:blocks) {
+    image_blocks[[i]] <- image %>% filter(y >= ymin + (i-1)*cutoff_y, 
+                                    y < ymin + i*cutoff_y)
+  }
+  return(image_blocks)
+}
+lf <- function(image){
+  class <- filter(image, label != 0)
+  labels <- dplyr::select(class, label)
+  features <- dplyr::select(class, NDAI, SD, CORR, DF, CF, BF, AF, AN)
+  
+  return(list(labels=labels, features=features))
+}
+Probability <- function(newdata, model_fit){
+  
+  pred <- predict(model_fit, type="prob",newdata=filter(newdata, label != 0))
+  pred <- data.frame(x = filter(newdata, label != 0)$x,
+                     y = filter(newdata, label != 0)$y,
+                     posterior = pred$pos[,2], 
+                     label = filter(newdata, label != 0)$label)
+  
+  return(pred)
+}
+ROC_fun <- function(model_fit, data, labels){
+  image_probability <- predict(model_fit, type="prob",newdata=data)$posterior[,2]
+  image_probability <- prediction(image_probability, labels)
+  roc <- performance(image_probability, "tpr", "fpr")
+  roc <- data.frame(FPR=unlist(roc@x.values),
+                    TPR=unlist(roc@y.values),
+                    thresh=unlist(roc@alpha.values))
+  auc <- unlist(performance(image_probability, "auc")@y.values)
+  return(list(roc=roc, auc=auc))
+}
+```
+
+
+```{r}
+KCV <- function(sepimage, classifier="qda"){
+  
+  n <- length(sepimage)
+  predictions <- data.frame()
+  roc <- data.frame()
+  auc <- c()
+
+  if (classifier=="qda"){
+     for(i in 1:n){
+       trainset <- data.frame()
+       for(j in which(1:n != i)){
+         trainset <- rbind(trainset, sepimage[[j]])
+    }
+    fold <- factor(i, levels = 1:n)
+    image_lf <- lf(sepimage[[i]])
+    train_model <- qda(label ~ NDAI + SD + CORR + DF + CF + BF + AF + AN, 
+                      data = filter(trainset, label != 0))
+    posterior <- data.frame(Probability(sepimage[[i]], train_model), fold=fold)
+    predictions <- rbind(predictions, posterior)
+
+    roc.curve <- data.frame(ROC_fun(train_model, image_lf$features, image_lf$label)$roc,
+                            fold=fold)
+    roc <- rbind(roc, roc.curve)
+    
+    auc[i] <- ROC_fun(train_model, image_lf$features, image_lf$labels)$auc
+  }
+  } else if (classifier=="lda"){
+    for(i in 1:n){
+       trainset <- data.frame()
+       for(j in which(1:n != i)){
+         trainset <- rbind(trainset, sepimage[[j]])
+    }
+    fold <- factor(i, levels = 1:n)
+    image_lf <- lf(sepimage[[i]])
+    train_model <- lda(label ~ NDAI + SD + CORR + DF + CF + BF + AF + AN, 
+                      data = filter(trainset, label != 0))
+    posterior <- data.frame(Probability(sepimage[[i]], train_model), fold=fold)
+    predictions <- rbind(predictions, posterior)
+
+    roc.curve <- data.frame(ROC_fun(train_model, image_lf$features, image_lf$label)$roc,
+                            fold=fold)
+    roc <- rbind(roc, roc.curve)
+    
+    auc[i] <- ROC_fun(train_model, image_lf$features, image_lf$labels)$auc
+  }
+  } else {
+    stop("Not able to use other methods")
+  }
+  return(list(predictions=predictions, roc=roc, auc=auc))
+}
+```
+
+```{r}
+predic_class <- function(newdata, model_fit){
+  
+  pred <- predict(model_fit, type="class",newdata= filter(newdata, label != 0))
+  pred <- data.frame(pos_class = pred$class, 
+                     label = filter(newdata, label != 0)$label)
+  
+  return(pred)
+}
+```
+
+```{r}
+Accuracy <- function(sepimage, classifier="qda"){
+  
+  n <- length(sepimage)
+  predictions <- data.frame()
+
+  if (classifier=="qda"){
+     for(i in 1:n){
+       trainset <- data.frame()
+       for(j in which(1:n != i)){
+         trainset <- rbind(trainset, sepimage[[j]])
+    }
+    fold <- factor(i, levels = 1:n)
+    image_lf <- lf(sepimage[[i]])
+    train_model <- qda(label ~ NDAI + SD + CORR + DF + CF + BF + AF + AN, 
+                      data = filter(trainset, label != 0))
+    posterior <- data.frame(predic_class(sepimage[[i]], train_model), fold=fold)
+    predictions <- rbind(predictions, posterior)
+  }
+  } else if (classifier=="lda"){
+    for(i in 1:n){
+       trainset <- data.frame()
+       for(j in which(1:n != i)){
+         trainset <- rbind(trainset, sepimage[[j]])
+    }
+    fold <- factor(i, levels = 1:n)
+    image_lf <- lf(sepimage[[i]])
+    train_model <- lda(label ~ NDAI + SD + CORR + DF + CF + BF + AF + AN, 
+                      data = filter(trainset, label != 0))
+    posterior <- data.frame(predic_class(sepimage[[i]], train_model), fold=fold)
+    predictions <- rbind(predictions, posterior)
+  }
+  } else {
+    stop("Not able to use other methods")
+  }
+  return(predictions)
+}
+```
+
+```{r}
+pre_accuracy_lda <- Accuracy(actual_train_data, "lda")
+pre_accuracy_qda <- Accuracy(actual_train_data, "qda")
+```
+
+```{r}
+accuracy_lda <- pre_accuracy_lda %>% group_by(fold) %>%
+  summarise(accuracy = mean(pos_class == label))
+accuracy_qda <- pre_accuracy_qda %>% group_by(fold) %>%
+  summarise(accuracy = mean(pos_class == label))
+```
+
+```{r}
+#accuracy for test data lda
+train_valid <- data.frame()
+for (i in 1:9) {
+  train_valid <- rbind(train_valid, actual_train_data[[i]])
+}
+train_valid_model <- lda(label ~ NDAI + SD + CORR + DF + CF + BF + AF + AN, 
+                      data = filter(train_valid, label != 0))
+train_valid_model_qda <- qda(label ~ NDAI + SD + CORR + DF + CF + BF + AF + AN, 
+                      data = filter(train_valid, label != 0))
+```
+
+```{r}
+test_data <- as.data.frame(test_data)
+```
+
+```{r}
+lda_test_accuracy_pre <- predic_class(test_data, train_valid_model)
+qda_test_accuracy_pre <- predic_class(test_data, train_valid_model_qda)
+```
+
+```{r}
+accuracy_lda_test <- lda_test_accuracy_pre %>% 
+  summarise(accuracy = mean(pos_class == label))
+accuracy_qda_test <- qda_test_accuracy_pre %>% 
+  summarise(accuracy = mean(pos_class == label))
+```
+
+```{r}
+test_accuracy_lda <- data.frame(fold = "test", accuracy = accuracy_lda_test)
+test_accuracy_qda <- data.frame(fold = "test", accuracy = accuracy_qda_test)
+accuracy_mean_lda <- data.frame(fold = "fold_mean", accuracy = mean(accuracy_lda$accuracy))
+accuracy_mean_qda <- data.frame(fold = "fold_mean", accuracy = mean(accuracy_qda$accuracy))
+accuracy_final_lda <- accuracy_lda %>% rbind(test_accuracy_lda) %>% rbind(accuracy_mean_lda)
+accuracy_final_qda <- accuracy_qda %>% rbind(test_accuracy_qda) %>% rbind(accuracy_mean_qda)
+```
+
+```{r}
+accuracy_final_lda
+accuracy_final_qda
+```
+
+```{r}
+library(gridExtra)
+grid.table(accuracy_final_lda)
+```
+
+
+```{r}
+kcv_9block_lda <- KCV(actual_train_data, "lda")
+kcv_9block_qda <- KCV(actual_train_data, "qda")
+```
+
+```{r}
+kcv_9block_lda[[2]]
+```
+
+```{r}
+roc_table_qda <- kcv_9block_lda[[2]]
+roc_cutoffs <- roc_table_qda[order(roc_table_qda$TPR, decreasing=TRUE),]
+roc_cutoffs[1,3]
+```
+
+```{r}
+ROC_fun <- function(model_fit, data, labels){
+  image_probability <- predict(model_fit, type="prob",newdata=data)$posterior[,2]
+  image_probability <- prediction(image_probability, labels)
+  roc <- performance(image_probability, "tpr", "fpr")
+  roc <- data.frame(FPR=unlist(roc@x.values),
+                    TPR=unlist(roc@y.values),
+                    thresh=unlist(roc@alpha.values))
+  auc <- unlist(performance(image_probability, "auc")@y.values)
+  return(list(roc=roc, auc=auc))
+}
+roc_table <- ROC_fun(model_fit, data, labels)$roc
+roc_cutoffs <- roc_table[order(roc_table$TPR, decreasing=TRUE),]
+roc_cutoffs[1,3]
+```
+
+```{r}
+#ROC 
+kcv_9block_lda_roc <- ggplot(kcv_9block_lda$roc) +
+  geom_line(aes(x=FPR, y=TPR, group=fold, color=fold)) +
+  scale_colour_discrete(name  ="Validation Image Block") +
+  ggtitle("ROC for 9-folds LDA")
+kcv_9block_qda_roc <- ggplot(kcv_9block_qda$roc) +
+  geom_line(aes(x=FPR,y=TPR, group=fold, color=fold)) +
+  scale_colour_discrete(name  ="Validation Image Block") +
+  ggtitle("ROC for 9-folds QDA")
+```
+
+```{r}
+kcv_9block_lda_roc
+kcv_9block_qda_roc
+```
+
+```{r}
+auc_lda <- data.frame(auc = kcv_9block_lda$auc,
+                      type = "LDA",
+                      fold = 1:9)
+auc_qda <- data.frame(auc = kcv_9block_qda$auc,
+                      type = "QDA",
+                      fold = 1:9)
+auc_lda_qda <- rbind(auc_lda, auc_qda)
+auc_lda_qda_plot <- ggplot(auc_lda_qda, aes(x = fold, y = auc, color = type)) + geom_point() +
+  scale_x_discrete()
+```
+
+```{r}
+auc_lda_qda_plot
+```
+
+```{r}
+lda_ave <- Probability(train_valid, train_valid_model)
+perfor_lda_ave <- ROC_fun(train_valid_model, filter(train_valid, label != 0), filter(train_valid, label != 0)$label)
+qda_ave <- Probability(train_valid, train_valid_model_qda)
+perfor_qda_ave <- ROC_fun(train_valid_model_qda, filter(train_valid, label != 0), filter(train_valid, label != 0)$label)
+```
+
+```{r}
+ave_lda_roc <- ggplot(perfor_lda_ave$roc) +
+  geom_line(aes(x=FPR, y=TPR)) +
+  ggtitle("ROC for LDA")
+ave_qda_roc <- ggplot(perfor_qda_ave$roc) +
+  geom_line(aes(x=FPR,y=TPR)) +
+  ggtitle("ROC for QDA")
+```
+
+```{r}
+ave_lda_roc
+ave_qda_roc
+```
+
+
+```{r}
+auc_lda_qda_plot <- data.frame(diff=qda.cv.12folds$auc-lda.cv.12folds$auc,
+                            fold=1:12) %>%
+                 ggplot() +
+                   geom_point(aes(x=fold, y=diff, size=3)) + 
+                   scale_y_continuous(limits=c(-.25,.25)) +
+                   scale_x_discrete() +
+                   labs(x="Fold", y="Difference") +
+                   ggtitle("Difference between AUC for QDA and LDA") +
+                   theme(aspect.ratio=1) +
+                   guides(size=FALSE)
+```
+
+```{r}
+images <- c(separate(image1), separate(image2), separate(image3))
+```
+
+```{r}
+rbind(image1_blocks[-1])
+```
+
+```{r}
+test_data <- blocks_combined %>% filter(block == test_index)
+c <- c[-test_index]
+valid_index <- sample(c, size = 1)
+valid_data <- blocks_combined %>% filter(block == valid_index)
+train_data <- blocks_combined %>% filter(block != valid_index) %>% filter(block != test_index)
+```
+
+```{r}
+features <- images %>% select(-c(x, y))
+ggpairs(features)
+```
+
+```{r}
+image1 %>% cor(expert, NDAI)
+```
+
+```{r}
+range(image1$x)
+range(image2$x)
+range(image3$x)
+```
+
+```{r}
+ggplot(images_c, aes(x = SD)) + 
+  geom_density(aes(group = as.factor(expert), fill = as.factor(expert)),
+               alpha = 0.5) + 
+  facet_wrap(~Image) + 
+  labs(title = "Figure 11: Density Plot for SD with respect to Expert Labels",
+       fill = "Class") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r}
+ggplot(images_c, aes(x = CORR)) + 
+  geom_density(aes(group = as.factor(expert), fill = as.factor(expert)),
+               alpha = 0.5) + 
+  facet_wrap(~Image) + 
+  scale_color_discrete(breaks = c(-1, 1), 
+                       labels = c("Clear", "Cloudy"))
+```
+
+```{r}
+ggplot(images_c, aes(x = DF)) + 
+  geom_density(aes(group = as.factor(expert), fill = as.factor(expert)),
+               alpha = 0.5) + 
+  facet_wrap(~Image) + 
+  scale_color_discrete(breaks = c(-1, 1), 
+                       labels = c("Clear", "Cloudy"))
+```
+
+```{r}
+ggplot(images_c, aes(x = CF)) + 
+  geom_density(aes(group = as.factor(expert), fill = as.factor(expert)),
+               alpha = 0.5) + 
+  facet_wrap(~Image) + 
+  scale_color_discrete(breaks = c(-1, 1), 
+                       labels = c("Clear", "Cloudy"))
+```
+
+```{r}
+ggplot(images_c, aes(x = BF)) + 
+  geom_density(aes(group = as.factor(expert), fill = as.factor(expert)),
+               alpha = 0.5) + 
+  facet_wrap(~Image) + 
+  scale_color_discrete(breaks = c(-1, 1), 
+                       labels = c("Clear", "Cloudy"))
+```
+
+```{r}
+ggplot(images_c, aes(x = AF)) + 
+  geom_density(aes(group = as.factor(expert), fill = as.factor(expert)),
+               alpha = 0.5) + 
+  facet_wrap(~Image) + 
+  scale_color_discrete(breaks = c(-1, 1), 
+                       labels = c("Clear", "Cloudy"))
+```
+
+```{r}
+ggplot(images_c, aes(x = AN)) + 
+  geom_density(aes(group = as.factor(expert), fill = as.factor(expert)),
+               alpha = 0.5) + 
+  facet_wrap(~Image) + 
+  scale_color_discrete(breaks = c(-1, 1), 
+                       labels = c("Clear", "Cloudy"))
+```
+
+### 2.d.
+```{r}
+CVmaster = function(classifier, features, label, K, loss = function(pred, true){mean(pred==true)}, mtry=3, thresh = 0.5){
+  if(!'y' %in% colnames(features))
+    stop("The features need to include y coordinate in order to divide blocks!")
+  # number of blocks
+  B = 9
+  # K should be smaller than number of blocks
+  if(K > B)
+    stop(paste0("The number of folds need to be smaller than the number of blocks: ",B,"!"))
+  # blocked (according to y) dataset
+  features$label = as.factor(label)
+  cutoff = seq(min(features$y), max(features$y), length.out = B+1)
+  cutoff[1] = cutoff[1] - 1
+  blocks = lapply(1:B, function(i){
+    df = features[features$y<=cutoff[i+1] & features$y>cutoff[i], !names(features)%in%c('x','y','expert')]
+    df$block = i
+    df
+  })
+  data_bloc = do.call("rbind", blocks)
+  # create CV folds
+  val_index = createFolds(1:length(blocks), k = K)
+  # calculate CV loss for Logistic regression, LDA, QDA and random forest
+  CV_loss = c()
+  
+  # Logistic regression
+  if(classifier == "Logistic Regression"){
+    if(any(levels(features$label) %in% c("0", "1")))
+      stop("The label should only be 0 or 1 for logsitic regression!")
+    for(i in 1:K){
+      valid = data_bloc %>% 
+        filter(block %in% val_index[[i]]) %>% 
+        select(-block)
+      train = data_bloc %>% 
+        filter(!block %in% val_index[[i]]) %>% 
+        select(-block)
+      log_reg = glm(label ~ ., data = train, family = "binomial")
+      prob = predict(log_reg, newdata = valid, type = "response")
+      pred = as.factor(as.integer(prob > thresh))
+      CV_loss = c(CV_loss, loss(pred, valid$label))
+    }
+  }
+  # LDA
+  else if(classifier == "LDA"){
+    for(i in 1:K){
+      valid = data_bloc %>% 
+        filter(block %in% val_index[[i]]) %>% 
+        select(-block)
+      train = data_bloc %>% 
+        filter(!block %in% val_index[[i]]) %>% 
+        select(-block)
+      lda =  MASS::lda(label ~ ., data = train)
+      pred = predict(lda, newdata = valid, type = "class")$class
+      CV_loss = c(CV_loss, loss(pred, valid$label))
+    }
+  }
+
+  # QDA
+  else if(classifier == "QDA"){
+    for(i in 1:K){
+      valid = data_bloc %>% 
+        filter(block %in% val_index[[i]]) %>% 
+        select(-block)
+      train = data_bloc %>% 
+        filter(!block %in% val_index[[i]]) %>% 
+        select(-block)
+      qda =  MASS::qda(label ~ ., data = train)
+      pred = predict(qda, newdata = valid, type = "class")$class
+      CV_loss = c(CV_loss, loss(pred, valid$label))
+    }
+  }
+  # random forest
+  else if(classifier == "Random Forest"){
+    for(i in 1:K){
+      valid = data_bloc %>% 
+        filter(block %in% val_index[[i]]) %>% 
+        select(-block)
+      train = data_bloc %>% 
+        filter(!block %in% val_index[[i]]) %>% 
+        select(-block)
+      rf = randomForest(label ~., data = train, mtry = mtry, importance = TRUE)
+      pred = predict(rf, newdata = valid)
+      CV_loss = c(CV_loss, loss(pred, valid$label))
+    }
+  }
+  else
+    stop("The classifier is not applicable to CVmaster, choose one of 'Logistic Regression', 'LDA', 'QDA', 'Random Forest'!")
+  
+  return(CV_loss)
+}
+```
+
+
+### 3.a.
+```{r}
+x1=data_bloc %>% filter(block==1) %>% arrange(y)%>%select(NDAI,SD,CORR,DF,CF,BF,AF,AN)
+x2=data_bloc %>% filter(block==2) %>% arrange(y)%>%select(NDAI,SD,CORR,DF,CF,BF,AF,AN)
+cor(as.vector(x1[1,]),as.vector(x2[1,]))
+```
+
+```{r}
+#separate images into blocks one by one
+separate <- function(image) {
+  ymin <- min(image$y)
+  ymax <- max(image$y)
+  #Each block
+  blocks <- replicate(1*9, data.frame())
+  cutoff_y <- ceiling((ymax - ymin)/9)
+  for (i in 1:9) {
+    blocks[[i]] <- image %>% filter(y >= ymin + (i-1)*cutoff_y, 
+                                    y < ymin + i*cutoff_y) %>% mutate(block = i)
+  }
+  return(blocks)
+}
+labels <- c("y", "x", "expert", "NDAI", "SD", "CORR", "DF", "CF", "BF", "AF", "AN")
+colnames(image1) <- labels
+colnames(image2) <- labels
+colnames(image3) <- labels
+image1 <- image1 %>% mutate(Image = "1")
+image2 <- image2 %>% mutate(Image = "2")
+image3 <- image3 %>% mutate(Image = "3")
+set.seed(123)
+test_index1 <- sample(1:9, size = 1)
+test1 <- separate(image1)[[test_index1]]
+test_index2 <- sample(1:9, size = 1)
+test2 <- separate(image2)[[test_index2]]
+test_index3 <- sample(1:9, size = 1)
+test3 <- separate(image3)[[test_index3]]
+test_data_true <- rbind(test1, test2, test3) %>% filter(expert != 0)  %>%
+  select(-c(x, y))
+train1 <- separate(image1)[-test_index1]
+train2 <- separate(image2)[-test_index2]
+train3 <- separate(image3)[-test_index3]
+bind <- function (data){
+  train <- data.frame()
+  for (i in 1:8) {
+    train <- rbind(train, data[[i]])
+  }
+  return(train)
+}
+bind1 <- bind(train1)
+bind2 <- bind(train2)
+bind3 <- bind(train3)
+train_data_true <- rbind(bind1, bind2, bind3) %>% filter(expert != 0)
+```
+```{r}
+for(i in 1:9){
+  print(nrow(train_data_true[train_data_true$block==i,]))
+}
+```
+```{r}
+precision <- function(ypred, y){
+    tab <- table(ypred, y)
+    return((tab[2,2])/(tab[2,1]+tab[2,2]))
+}
+# function to compute recall
+recall <- function(ypred, y){
+    tab <- table(ypred, y)
+    return(tab[2,2]/(tab[1,2]+tab[2,2]))
+}
+
+# function to compute F1_score
+f1_score <- function(ypred, y){
+  pre <- precision(ypred, y)
+  rec <- recall(ypred, y)
+  return (2 * pre * rec / (pre + rec))
+}
+```
+
+```{r}
+set.seed(123)
+train_data_true = select(train_data_true, -block)
+B = 9
+K = B
+cutoff = seq(min(train_data_true$y), max(train_data_true$y), length.out = B+1)
+cutoff[1] = cutoff[1] - 1
+blocks = lapply(1:B, function(i){
+  df = train_data_true %>% filter(y<=cutoff[i+1] & y>cutoff[i]) %>% select(-x,-y)
+  df$block = i
+  df
+})
+data_block = do.call("rbind", blocks)
+if(K == B){
+  val_index1 = sample(1:length(blocks), 1)
+  val_index2 = sample(1:length(blocks), 1)
+  val_index3 = sample(1:length(blocks), 1)
+}else{
+val_index1 = createFolds(1:length(blocks), k = K)
+val_index2 = createFolds(1:length(blocks), k = K)
+val_index3 = createFolds(1:length(blocks), k = K)
+}
+data_block$expert = as.factor(data_block$expert)
+```
+
+
+```{r}
+acc = tibble(
+  fold = c(1:9, "CV_mean", "test"),
+  log_reg_imagecomb = NA,
+  lda_imagecomb = NA,
+  qda_imagecomb = NA,
+  rf_imagecomb = NA,
+  log_reg_imageindep = NA,
+  lda_imageindep = NA,
+  qda_imageindep = NA,
+  rf_imageindep = NA
+)
+roc_imageindep = tibble(
+  FPR = NA, 
+  TPR = NA, 
+  cutoff = NA,
+  model = NA
+)
+roc_imagecomb = tibble(
+  FPR = NA, 
+  TPR = NA, 
+  cutoff = NA,
+  model = NA
+)
+auc = tibble(
+  logreg_imacomb = NA,
+  lda_imacomb = NA,
+  qda_imacomb = NA,
+  rf_imacomb = NA,
+  logreg_imaindep = NA,
+  lda_imaindep = NA,
+  qda_imaindep = NA,
+  rf_imaindep = NA
+)
+cutoff_best = tibble(
+  logreg_imacomb = NA,
+  lda_imacomb = NA,
+  qda_imacomb = NA,
+  rf_imacomb = NA,
+  logreg_imaindep = NA,
+  lda_imaindep = NA,
+  qda_imaindep = NA,
+  rf_imaindep = NA
+)
+model_fit = data.frame(matrix(NA, nrow = 3, ncol = 8))
+colnames(model_fit) = c("logreg_imacomb","lda_imacomb","qda_imacomb","rf_imacomb",
+                        "logreg_imaindep","lda_imaindep","qda_imaindep","rf_imaindep")
+rownames(model_fit) = c("precision","recall","f1_score")
+```
+
+
+```{r}
+## random forest
+set.seed(123)
+data_block = do.call("rbind", blocks)
+data_block$expert = as.factor(data_block$expert)
+OOB_error = data.frame(mtry = c(2,3,6))
+for(i in 1:K){
+  valid1 = data_block %>% filter(block %in% val_index1[[i]], Image == 1) %>% select(-block, -Image)
+  valid2 = data_block %>% filter(block %in% val_index2[[i]], Image == 2) %>% select(-block, -Image)
+  valid3 = data_block %>% filter(block %in% val_index3[[i]], Image == 3) %>% select(-block, -Image)
+  valid = rbind(valid1, valid2, valid3)
+  train = rbind(data_block %>% filter(Image == 1) %>% select(-block, -Image) %>% setdiff(valid1),
+                data_block %>% filter(Image == 2) %>% select(-block, -Image) %>% setdiff(valid2),
+                data_block %>% filter(Image == 3) %>% select(-block, -Image) %>% setdiff(valid3))
+  tunerf = tuneRF(train %>% select(-expert), train$expert, 
+                  mtryStart = 3, ntreeTry = 500, plot = FALSE, trace = FALSE)
+  rf = randomForest(expert ~., data = train, 
+                    mtry = tunerf$mtry[which.min(tunerf$OOBError)], importance = TRUE)
+  colnames(tunerf) = c("mtry", paste0("OOBError", i))
+  OOB_error = left_join(OOB_error, data.frame(tunerf), by = "mtry")
+  saveRDS(rf, file = paste0("random_forest",i,".rds"))
+}
+best_mtry = 3
+rf = randomForest(expert ~., data = data_block %>% select(-block, -Image), mtry = best_mtry, importance = TRUE)
+saveRDS(rf, "random_forest_all.rds")
+```
+```{r}
+OOB_error %>% 
+  pivot_longer(-1, names_to = "fold", values_to = "OOB_error") %>% 
+  ggplot() + 
+  geom_line(aes(x = mtry, y = OOB_error)) + 
+  facet_wrap("fold", scale = "free")
+```
+
+```{r}
+# accuracy
+data_block = do.call("rbind", blocks)
+data_block$expert = as.factor(data_block$expert)
+test_data_true <- rbind(test1, test2, test3) %>% filter(expert != 0)  %>%
+  select(-c(x, y))
+test_data_true$expert = as.factor(test_data_true$expert)
+acc_rf = c()
+for(i in 1:K){
+  rf = readRDS(paste0("randomforest_imageindependent/random_forest",i,".rds"))
+  valid1 = data_block %>% filter(block %in% val_index1[[i]], Image == 1) %>% select(-block, -Image)
+  valid2 = data_block %>% filter(block %in% val_index2[[i]], Image == 2) %>% select(-block, -Image)
+  valid3 = data_block %>% filter(block %in% val_index3[[i]], Image == 3) %>% select(-block, -Image)
+  valid = rbind(valid1, valid2, valid3)
+  pred = predict(rf, newdata = valid %>% select(-expert))
+  acc_rf = c(acc_rf, mean(pred == valid$expert))
+}
+acc_rf = c(acc_rf, mean(acc_rf))
+rf = readRDS("randomforest_imageindependent/random_forest_all.rds")
+pred = predict(rf, newdata = test_data_true %>% select(-expert))
+acc_rf = c(acc_rf, mean(pred == test_data_true$expert))
+acc$rf_imageindep = acc_rf
+```
+
+```{r}
+# ROC
+#image_probability <- predict(rf, newdata=data_block%>%select(-expert), type="prob")[,2]
+#image_probability <- prediction(image_probability, data_block$expert)
+image_probability <- predict(rf, newdata=test_data_true%>%select(-expert), type="prob")[,2]
+image_probability <- prediction(image_probability, test_data_true$expert)
+perf <- performance(image_probability, "tpr", "fpr")
+roc = tibble(
+  FPR = unlist(perf@x.values),
+  TPR = unlist(perf@y.values),
+  cutoff = unlist(perf@alpha.values),
+  model = "rf"
+)
+roc_imageindep = rbind(roc_imageindep, roc)
+auc$rf_imaindep = unlist(performance(image_probability, "auc")@y.values)
+cost_perf = performance(image_probability, "cost") 
+cutoff_best$rf_imaindep = image_probability@cutoffs[[1]][which.min(cost_perf@y.values[[1]])]
+```
+
+```{r}
+# map pred-true
+images$expert = as.factor(images$expert)
+rf = readRDS("randomforest_imageindependent/random_forest_all.rds")
+pred = predict(rf, newdata = images %>% filter(expert != 0))
+images$pred = factor(0, levels = c(-1,0,1))
+images$pred[images$expert!=0] = pred
+index_false = which(images$expert != images$pred)
+ggplot(images) +
+  geom_point(aes(x = x, y = y, color = expert)) + 
+  geom_point(aes(x = x, y = y), alpha = 0.5, colour = "black", data = images[index_false,], size = 0.8) +
+  facet_wrap(~Image) + 
+  labs(title = "random forest") +
+  scale_color_discrete(breaks = c("-1", "0", "1"), 
+                       labels = c("Clear", "Unknown", "Cloudy"))
+```
+
+```{r}
+# false region
+summary(images[index_false, !names(images)%in%c('expert','Image')])
+```
+
+```{r}
+# model fit
+rf = readRDS("randomforest_imageindependent/random_forest_all.rds")
+pred = predict(rf, newdata = test_data_true %>% select(-expert))
+model_fit[1,8] = precision(pred, test_data_true$expert)
+model_fit[2,8] = recall(pred, test_data_true$expert)
+model_fit[3,8] = f1_score(pred, test_data_true$expert)
+```
+
+
+```{r}
+# LDA
+acc_lda = c()
+for(i in 1:K){
+  valid1 = data_block %>% filter(block %in% val_index1[[i]], Image == 1) %>% select(-block, -Image)
+  valid2 = data_block %>% filter(block %in% val_index2[[i]], Image == 2) %>% select(-block, -Image)
+  valid3 = data_block %>% filter(block %in% val_index3[[i]], Image == 3) %>% select(-block, -Image)
+  valid = rbind(valid1, valid2, valid3)
+  train = rbind(data_block %>% filter(Image == 1) %>% select(-block, -Image) %>% setdiff(valid1),
+                data_block %>% filter(Image == 2) %>% select(-block, -Image) %>% setdiff(valid2),
+                data_block %>% filter(Image == 3) %>% select(-block, -Image) %>% setdiff(valid3))
+  lda =  MASS::lda(expert ~ ., data = train)
+  pred = predict(lda, newdata = valid %>% select(-expert), type = "class")$class
+  acc_lda = c(acc_lda, mean(pred==valid$expert))
+}
+acc_lda = c(acc_lda, mean(acc_lda))
+lda =  MASS::lda(expert ~ ., data = data_block %>% select(-block, -Image))
+pred = predict(lda, newdata = test_data_true %>% select(-expert), type = "class")$class
+acc_lda = c(acc_lda, mean(pred == test_data_true$expert))
+acc$lda_imageindep = acc_lda
+```
+
+```{r}
+#image_probability <- predict(lda, type="prob",newdata=data_block%>%select(-expert))$posterior[,2]
+#image_probability <- prediction(image_probability, data_block$expert)
+image_probability <- predict(lda, type="prob",newdata=test_data_true%>%select(-expert))$posterior[,2]
+image_probability <- prediction(image_probability, test_data_true$expert)
+perf <- performance(image_probability, "tpr", "fpr")
+roc = tibble(
+  FPR = unlist(perf@x.values),
+  TPR = unlist(perf@y.values),
+  cutoff = unlist(perf@alpha.values),
+  model = "lda"
+)
+roc_imageindep = rbind(roc_imageindep, roc)
+auc$lda_imaindep = unlist(performance(image_probability, "auc")@y.values)
+cost_perf = performance(image_probability, "cost") 
+cutoff_best$lda_imaindep = image_probability@cutoffs[[1]][which.min(cost_perf@y.values[[1]])]
+```
+
+```{r}
+# map pred-true
+pred = predict(lda, newdata = images %>% filter(expert != 0), type = "class")$class
+images$pred = factor(0, levels = c(-1,0,1))
+images$pred[images$expert!=0] = pred
+index_false = which(images$expert != images$pred)
+ggplot(images) +
+  geom_point(aes(x = x, y = y, color = expert)) + 
+  geom_point(aes(x = x, y = y), alpha = 0.5, colour = "black", data = images[index_false,], size = 0.8) +
+  facet_wrap(~Image) + 
+  labs(title = "lda") +
+  scale_color_discrete(breaks = c("-1", "0", "1"), 
+                       labels = c("Clear", "Unknown", "Cloudy"))
+```
+
+```{r}
+# model fit
+pred = predict(lda, newdata = test_data_true %>% select(-expert), type = "class")$class
+model_fit[1,6] = precision(pred, test_data_true$expert)
+model_fit[2,6] = recall(pred, test_data_true$expert)
+model_fit[3,6] = f1_score(pred, test_data_true$expert)
+```
+
+```{r}
+# QDA
+acc_qda = c()
+for(i in 1:K){
+  valid1 = data_block %>% filter(block %in% val_index1[[i]], Image == 1) %>% select(-block, -Image)
+  valid2 = data_block %>% filter(block %in% val_index2[[i]], Image == 2) %>% select(-block, -Image)
+  valid3 = data_block %>% filter(block %in% val_index3[[i]], Image == 3) %>% select(-block, -Image)
+  valid = rbind(valid1, valid2, valid3)
+  train = rbind(data_block %>% filter(Image == 1) %>% select(-block, -Image) %>% setdiff(valid1),
+                data_block %>% filter(Image == 2) %>% select(-block, -Image) %>% setdiff(valid2),
+                data_block %>% filter(Image == 3) %>% select(-block, -Image) %>% setdiff(valid3))
+  qda =  MASS::qda(expert ~ ., data = train)
+  pred = predict(qda, newdata = valid %>% select(-expert), type = "class")$class
+  acc_qda = c(acc_qda, mean(pred==valid$expert))
+}
+acc_qda = c(acc_qda, mean(acc_qda))
+qda =  MASS::qda(expert ~ ., data = data_block %>% select(-block, -Image))
+pred = predict(qda, newdata = test_data_true %>% select(-expert), type = "class")$class
+acc_qda = c(acc_qda, mean(pred == test_data_true$expert))
+acc$qda_imageindep = acc_qda
+```
+
+```{r}
+#image_probability <- predict(qda, type="prob",newdata=data_block%>%select(-expert))$posterior[,2]
+#image_probability <- prediction(image_probability, data_block$expert)
+image_probability <- predict(qda, type="prob",newdata=test_data_true%>%select(-expert))$posterior[,2]
+image_probability <- prediction(image_probability, test_data_true$expert)
+perf <- performance(image_probability, "tpr", "fpr")
+roc = tibble(
+  FPR = unlist(perf@x.values),
+  TPR = unlist(perf@y.values),
+  cutoff = unlist(perf@alpha.values),
+  model = "qda"
+)
+roc_imageindep = rbind(roc_imageindep, roc)
+auc$qda_imaindep = unlist(performance(image_probability, "auc")@y.values)
+cost_perf = performance(image_probability, "cost") 
+cutoff_best$qda_imaindep = image_probability@cutoffs[[1]][which.min(cost_perf@y.values[[1]])]
+```
+
+```{r}
+# map pred-true
+pred = predict(qda, newdata = images %>% filter(expert != 0), type = "class")$class
+images$pred = factor(0, levels = c(-1,0,1))
+images$pred[images$expert!=0] = pred
+index_false = which(images$expert != images$pred)
+ggplot(images) +
+  geom_point(aes(x = x, y = y, color = expert)) + 
+  geom_point(aes(x = x, y = y), alpha = 0.5, colour = "black", data = images[index_false,], size = 0.8) +
+  facet_wrap(~Image) + 
+  labs(title = "qda") +
+  scale_color_discrete(breaks = c("-1", "0", "1"), 
+                       labels = c("Clear", "Unknown", "Cloudy"))
+```
+
+```{r}
+# model fit
+pred = predict(qda, newdata = test_data_true %>% select(-expert), type = "class")$class
+model_fit[1,7] = precision(pred, test_data_true$expert)
+model_fit[2,7] = recall(pred, test_data_true$expert)
+model_fit[3,7] = f1_score(pred, test_data_true$expert)
+```
+
+```{r}
+## logistic regression
+accuracy = c()
+data_block$expert = as.factor(ifelse(data_block$expert == -1, 0, 1))
+test_data_true$expert = as.factor(ifelse(test_data_true$expert == -1, 0, 1))
+for(i in 1:K){
+  valid1 = data_block %>% filter(block %in% val_index1[[i]], Image == 1) %>% select(-block, -Image)
+  valid2 = data_block %>% filter(block %in% val_index2[[i]], Image == 2) %>% select(-block, -Image)
+  valid3 = data_block %>% filter(block %in% val_index3[[i]], Image == 3) %>% select(-block, -Image)
+  valid = rbind(valid1, valid2, valid3)
+  train = rbind(data_block %>% filter(Image == 1) %>% select(-block, -Image) %>% setdiff(valid1),
+                data_block %>% filter(Image == 2) %>% select(-block, -Image) %>% setdiff(valid2),
+                data_block %>% filter(Image == 3) %>% select(-block, -Image) %>% setdiff(valid3))
+  log_reg = glm(expert ~ ., data = train, family = "binomial")
+  #save(log_reg, file = paste0("logreg",i,".rds"))
+  prob = predict(log_reg, newdata = valid %>% select(-expert), type = "response")
+  pred = as.integer(prob > 0.5)
+  accuracy = c(accuracy, mean(pred == valid$expert))
+}
+accuracy = c(accuracy, mean(accuracy))
+log_reg = glm(expert ~., data = data_block %>% select(-block, -Image), family = "binomial")
+#saveRDS(log_reg, file = "logreg_all.rds")
+prob = predict(log_reg, newdata = test_data_true, type = "response")
+pred = as.integer(prob > 0.5)
+accuracy = c(accuracy, mean(pred == test_data_true$expert))
+acc$log_reg_imageindep = accuracy
+```
+
+```{r}
+#image_probability <- predict(log_reg, type="response",newdata=data_block%>%select(-expert))
+#image_probability <- prediction(image_probability, data_block$expert)
+image_probability <- predict(log_reg, type="response",newdata=test_data_true%>%select(-expert))
+image_probability <- prediction(image_probability, test_data_true$expert)
+perf <- performance(image_probability, "tpr", "fpr")
+roc = tibble(
+  FPR = unlist(perf@x.values),
+  TPR = unlist(perf@y.values),
+  cutoff = unlist(perf@alpha.values),
+  model = "log_reg"
+)
+roc_imageindep = rbind(roc_imageindep, roc)
+auc$logreg_imaindep = unlist(performance(image_probability, "auc")@y.values)
+cost_perf = performance(image_probability, "cost") 
+cutoff_best$logreg_imaindep = image_probability@cutoffs[[1]][which.min(cost_perf@y.values[[1]])]
+roc_imageindep = na.omit(roc_imageindep)
+```
+
+```{r}
+# map pred-true
+prob = predict(log_reg, newdata = images %>% filter(expert != 0), type = "response")
+pred = as.integer(prob > cutoff_best$logreg_imaindep)
+pred = as.factor(ifelse(pred==0,-1,1))
+images$pred = factor(0, levels = c(-1,0,1))
+images$pred[images$expert!=0] = pred
+index_false = which(images$expert != images$pred)
+ggplot(images) +
+  geom_point(aes(x = x, y = y, color = expert)) + 
+  geom_point(aes(x = x, y = y), alpha = 0.5, colour = "black", data = images[index_false,], size = 0.8) +
+  facet_wrap(~Image) + 
+  labs(title = "logistic regression") +
+  scale_color_discrete(breaks = c("-1", "0", "1"), 
+                       labels = c("Clear", "Unknown", "Cloudy"))
+```
+
+```{r}
+# model fit
+prob = predict(log_reg, newdata = test_data_true %>% select(-expert), type = "response")
+pred = as.integer(prob > cutoff_best$logreg_imaindep)
+pred = as.factor(pred)
+model_fit[1,5] = precision(pred, test_data_true$expert)
+model_fit[2,5] = recall(pred, test_data_true$expert)
+model_fit[3,5] = f1_score(pred, test_data_true$expert)
+```
+
+## another way to split data(combine)
+```{r}
+set.seed(123)
+images <- rbind(image1, image2, image3)
+ymin <- min(images$y)
+ymax <- max(images$y)
+blocks <- replicate(1*10, data.frame())
+cutoff_y <- ceiling((ymax - ymin)/10)
+for (i in 1:10) {
+  blocks[[i]] <- images %>% filter(y >= ymin + (i-1)*cutoff_y, 
+                                  y < ymin + i*cutoff_y)
+}
+test_index_true <- sample(1:10, size = 1)
+test_data_true <- blocks[[test_index_true]]
+train_data_true <- blocks[-test_index_true]
+train_data_true = do.call("rbind", train_data_true) %>% filter(expert != 0)
+test_data_true = test_data_true %>% filter(expert != 0)
+B = 9
+cutoff = seq(min(train_data_true$y), max(train_data_true$y), length.out = B+1)
+cutoff[1] = cutoff[1] - 1
+blocks = lapply(1:B, function(i){
+  df = train_data_true %>% filter(y<=cutoff[i+1] & y>cutoff[i]) %>% select(-x,-y)
+  df$block = i
+  df
+})
+data_block = do.call("rbind", blocks)
+data_block$expert = as.factor(data_block$expert)
+test_data_true$expert = as.factor(test_data_true$expert)
+val_index = createFolds(1:B, k = K)
+```
+
+
+
+```{r}
+# random forest
+set.seed(123)
+for(i in 1:K){
+  valid = data_block %>% filter(block %in% val_index[[i]]) %>% select(-block, -Image)
+  train = data_block %>% select(-block, -Image) %>% setdiff(valid)
+  rf = randomForest(expert ~., data = train, importance = TRUE)
+  saveRDS(rf, file = paste0("random_forest_imacomb",i,".rds"))
+}
+rf = randomForest(expert ~., data = data_block %>% select(-block, -Image), importance = TRUE)
+saveRDS(rf, "random_forest_imacomb_all.rds")
+```
+```{r}
+# rf accuracy
+acc_rf = c()
+for(i in 1:K){
+  rf = readRDS(paste0("randomforest_imacomb/random_forest_imacomb",i,".rds"))
+  valid = data_block %>% filter(block %in% val_index[[i]]) %>% select(-block, -Image)
+  train = data_block %>% select(-block, -Image) %>% setdiff(valid)
+  pred = predict(rf, newdata = valid %>% select(-expert))
+  acc_rf = c(acc_rf, mean(pred == valid$expert))
+}
+acc_rf = c(acc_rf, mean(acc_rf))
+rf = readRDS("randomforest_imacomb/random_forest_imacomb_all.rds")
+pred = predict(rf, newdata = test_data_true %>% select(-expert))
+acc_rf = c(acc_rf, mean(pred == test_data_true$expert))
+acc$rf_imagecomb = acc_rf
+```
+
+```{r}
+rf = readRDS("randomforest_imageindependent/random_forest_all.rds")
+#image_probability <- predict(rf, newdata=data_block%>%select(-expert), type="prob")[,2]
+#image_probability <- prediction(image_probability, data_block$expert)
+image_probability <- predict(rf, newdata=test_data_true, type="prob")[,2]
+image_probability <- prediction(image_probability, test_data_true$expert)
+perf <- performance(image_probability, "tpr", "fpr")
+roc = tibble(
+  FPR = unlist(perf@x.values),
+  TPR = unlist(perf@y.values),
+  cutoff = unlist(perf@alpha.values),
+  model = "rf"
+)
+roc_imagecomb = rbind(roc_imagecomb, roc)
+auc$rf_imacomb = unlist(performance(image_probability, "auc")@y.values)
+cost_perf = performance(image_probability, "cost") 
+cutoff_best$rf_imacomb = image_probability@cutoffs[[1]][which.min(cost_perf@y.values[[1]])]
+```
+
+```{r}
+# model fit
+rf = readRDS("randomforest_imacomb/random_forest_imacomb_all.rds")
+pred = predict(rf, newdata = test_data_true %>% select(-expert))
+model_fit[1,4] = precision(pred, test_data_true$expert)
+model_fit[2,4] = recall(pred, test_data_true$expert)
+model_fit[3,4] = f1_score(pred, test_data_true$expert)
+```
+
+```{r}
+# LDA
+acc_lda = c()
+for(i in 1:K){
+  valid = data_block %>% filter(block %in% val_index[[i]]) %>% select(-block, -Image)
+  train = data_block %>% select(-block, -Image) %>% setdiff(valid)
+  lda =  MASS::lda(expert ~ ., data = train)
+  pred = predict(lda, newdata = valid %>% select(-expert), type = "class")$class
+  acc_lda = c(acc_lda, mean(pred==valid$expert))
+}
+acc_lda = c(acc_lda, mean(acc_lda))
+lda =  MASS::lda(expert ~ ., data = data_block %>% select(-block, -Image))
+pred = predict(lda, newdata = test_data_true %>% select(-expert), type = "class")$class
+acc_lda = c(acc_lda, mean(pred == test_data_true$expert))
+acc$lda_imagecomb = acc_lda
+```
+
+```{r}
+#image_probability <- predict(lda, type="prob",newdata=data_block%>%select(-expert))$posterior[,2]
+#image_probability <- prediction(image_probability, data_block$expert)
+image_probability <- predict(lda, type="prob",newdata=test_data_true%>%select(-expert))$posterior[,2]
+image_probability <- prediction(image_probability, test_data_true$expert)
+perf <- performance(image_probability, "tpr", "fpr")
+roc = tibble(
+  FPR = unlist(perf@x.values),
+  TPR = unlist(perf@y.values),
+  cutoff = unlist(perf@alpha.values),
+  model = "lda"
+)
+roc_imagecomb = rbind(roc_imagecomb, roc)
+auc$lda_imacomb = unlist(performance(image_probability, "auc")@y.values)
+cost_perf = performance(image_probability, "cost") 
+cutoff_best$lda_imacomb = image_probability@cutoffs[[1]][which.min(cost_perf@y.values[[1]])]
+```
+
+```{r}
+# model fit
+pred = predict(lda, newdata = test_data_true %>% select(-expert), type = "class")$class
+model_fit[1,2] = precision(pred, test_data_true$expert)
+model_fit[2,2] = recall(pred, test_data_true$expert)
+model_fit[3,2] = f1_score(pred, test_data_true$expert)
+```
+
+```{r}
+# QDA
+acc_qda = c()
+for(i in 1:K){
+  valid = data_block %>% filter(block %in% val_index[[i]]) %>% select(-block, -Image)
+  train = data_block %>% select(-block, -Image) %>% setdiff(valid)
+  qda =  MASS::qda(expert ~ ., data = train)
+  pred = predict(qda, newdata = valid %>% select(-expert), type = "class")$class
+  acc_qda = c(acc_qda, mean(pred==valid$expert))
+}
+acc_qda = c(acc_qda, mean(acc_qda))
+qda =  MASS::qda(expert ~ ., data = data_block %>% select(-block, -Image))
+pred = predict(qda, newdata = test_data_true %>% select(-expert), type = "class")$class
+acc_qda = c(acc_qda, mean(pred == test_data_true$expert))
+acc$qda_imagecomb = acc_qda
+```
+
+```{r}
+#image_probability <- predict(qda, type="prob",newdata=data_block%>%select(-expert))$posterior[,2]
+#image_probability <- prediction(image_probability, data_block$expert)
+image_probability <- predict(qda, type="prob",newdata=test_data_true%>%select(-expert))$posterior[,2]
+image_probability <- prediction(image_probability, test_data_true$expert)
+perf <- performance(image_probability, "tpr", "fpr")
+roc = tibble(
+  FPR = unlist(perf@x.values),
+  TPR = unlist(perf@y.values),
+  cutoff = unlist(perf@alpha.values),
+  model = "qda"
+)
+roc_imagecomb = rbind(roc_imagecomb, roc)
+auc$qda_imacomb = unlist(performance(image_probability, "auc")@y.values)
+cost_perf = performance(image_probability, "cost") 
+cutoff_best$qda_imacomb = image_probability@cutoffs[[1]][which.min(cost_perf@y.values[[1]])]
+```
+
+```{r}
+# model fit
+pred = predict(qda, newdata = test_data_true %>% select(-expert), type = "class")$class
+model_fit[1,3] = precision(pred, test_data_true$expert)
+model_fit[2,3] = recall(pred, test_data_true$expert)
+model_fit[3,3] = f1_score(pred, test_data_true$expert)
+```
+
+```{r}
+## logistic regression
+accuracy = c()
+data_block$expert = as.factor(ifelse(data_block$expert == -1, 0, 1))
+test_data_true$expert = as.factor(ifelse(test_data_true$expert == -1, 0, 1))
+for(i in 1:K){
+  valid = data_block %>% filter(block %in% val_index[[i]]) %>% select(-block, -Image)
+  train = data_block %>% select(-block, -Image) %>% setdiff(valid)
+  log_reg = glm(expert ~ ., data = train, family = "binomial")
+  #save(log_reg, file = paste0("logreg",i,".rds"))
+  prob = predict(log_reg, newdata = valid %>% select(-expert), type = "response")
+  pred = as.integer(prob > 0.5)
+  accuracy = c(accuracy, mean(pred == valid$expert))
+}
+accuracy = c(accuracy, mean(accuracy))
+log_reg = glm(expert ~., data = data_block %>% select(-block, -Image), family = "binomial")
+#saveRDS(log_reg, file = "logreg_all.rds")
+prob = predict(log_reg, newdata = test_data_true, type = "response")
+pred = as.integer(prob > 0.5)
+accuracy = c(accuracy, mean(pred == test_data_true$expert))
+acc$log_reg_imagecomb = accuracy
+```
+
+```{r}
+#image_probability <- predict(log_reg, type="response",newdata=data_block%>%select(-expert))
+#image_probability <- prediction(image_probability, data_block$expert)
+image_probability <- predict(log_reg, type="response",newdata=test_data_true%>%select(-expert))
+image_probability <- prediction(image_probability, test_data_true$expert)
+perf <- performance(image_probability, "tpr", "fpr")
+roc = tibble(
+  FPR = unlist(perf@x.values),
+  TPR = unlist(perf@y.values),
+  cutoff = unlist(perf@alpha.values),
+  model = "log_reg"
+)
+roc_imagecomb = rbind(roc_imagecomb, roc)
+auc$logreg_imacomb = unlist(performance(image_probability, "auc")@y.values)
+cost_perf = performance(image_probability, "cost") 
+cutoff_best$logreg_imacomb = image_probability@cutoffs[[1]][which.min(cost_perf@y.values[[1]])]
+roc_imagecomb = na.omit(roc_imagecomb)
+```
+
+```{r}
+# model fit
+prob = predict(log_reg, newdata = test_data_true %>% select(-expert), type = "response")
+pred = as.integer(prob > cutoff_best$logreg_imacomb)
+pred = as.factor(pred)
+model_fit[1,1] = precision(pred, test_data_true$expert)
+model_fit[2,1] = recall(pred, test_data_true$expert)
+model_fit[3,1] = f1_score(pred, test_data_true$expert)
+```
+
+
+
+
+
+
+
+```{r}
+logreg_point = which(roc_imagecomb$cutoff == cutoff_best$logreg_imacomb & roc_imagecomb$model == "log_reg")
+lda_point = which(roc_imagecomb$cutoff == cutoff_best$lda_imacomb & roc_imagecomb$model == "lda")
+qda_point = which(roc_imagecomb$cutoff == cutoff_best$qda_imacomb & roc_imagecomb$model == "qda")
+rf_point = which(roc_imagecomb$cutoff == cutoff_best$rf_imacomb & roc_imagecomb$model == "rf")
+ggplot(roc_imagecomb) + 
+  geom_line(aes(x = FPR, y = TPR, color = model)) + 
+  geom_point(aes(x = FPR[logreg_point], y = TPR[logreg_point])) + 
+  geom_point(aes(x = FPR[lda_point], y = TPR[lda_point])) + 
+  geom_point(aes(x = FPR[qda_point], y = TPR[qda_point])) + 
+  geom_point(aes(x = FPR[rf_point], y = TPR[rf_point])) + 
+  annotate('text',x = roc_imagecomb$FPR[logreg_point]+0.12, y = roc_imagecomb$TPR[logreg_point],
+           label=paste0("log_reg:", round(cutoff_best$logreg_imacomb,digits=3)),size=4) +
+  annotate('text',x = roc_imagecomb$FPR[lda_point]+0.06, y = roc_imagecomb$TPR[lda_point]-0.05,
+         label=paste0("lda:", round(cutoff_best$lda_imacomb,digits=3)),size=4) + 
+  annotate('text',x = roc_imagecomb$FPR[qda_point], y = roc_imagecomb$TPR[qda_point]+0.06,
+         label=paste0("qda:", round(cutoff_best$qda_imacomb,digits=3)),size=4) + 
+  annotate('text',x = roc_imagecomb$FPR[rf_point]-0.06, y = roc_imagecomb$TPR[rf_point],
+         label=paste0("rf:", round(cutoff_best$rf_imacomb,digit=3)),size=4)
+```
+```{r}
+logreg_point = which(roc_imageindep$cutoff == cutoff_best$logreg_imaindep & roc_imageindep$model == "log_reg")
+lda_point = which(roc_imageindep$cutoff == cutoff_best$lda_imaindep & roc_imageindep$model == "lda")
+qda_point = which(roc_imageindep$cutoff == cutoff_best$qda_imaindep & roc_imageindep$model == "qda")
+rf_point = which(roc_imageindep$cutoff == cutoff_best$rf_imaindep & roc_imageindep$model == "rf")
+ggplot(roc_imageindep) + 
+  geom_line(aes(x = FPR, y = TPR, color = model)) + 
+  geom_point(aes(x = FPR[logreg_point], y = TPR[logreg_point])) + 
+  geom_point(aes(x = FPR[lda_point], y = TPR[lda_point])) + 
+  geom_point(aes(x = FPR[qda_point], y = TPR[qda_point])) + 
+  geom_point(aes(x = FPR[rf_point], y = TPR[rf_point])) + 
+  annotate('text',x = roc_imageindep$FPR[logreg_point]+0.12, y = roc_imageindep$TPR[logreg_point],
+           label=paste0("log_reg:", round(cutoff_best$logreg_imaindep,digits=3)),size=4) +
+  annotate('text',x = roc_imageindep$FPR[lda_point]+0.06, y = roc_imageindep$TPR[lda_point]-0.05,
+         label=paste0("lda:", round(cutoff_best$lda_imaindep,digits=3)),size=4) + 
+  annotate('text',x = roc_imageindep$FPR[qda_point], y = roc_imageindep$TPR[qda_point]+0.06,
+         label=paste0("qda:", round(cutoff_best$qda_imaindep,digits=3)),size=4) + 
+  annotate('text',x = roc_imageindep$FPR[rf_point]-0.06, y = roc_imageindep$TPR[rf_point],
+         label=paste0("rf:", round(cutoff_best$rf_imaindep,digit=3)),size=4)
+```
+
+
+```{r}
+# rf convergence diag
+df = rf$err.rate %>% 
+  data.frame() %>% 
+  rename(Clear = "X.1", Cloudy = "X1") %>% 
+  mutate('number of trees' = 1:nrow(.)) %>% 
+  pivot_longer(1:3, names_to = "type", values_to = "Error Rate")
+ggplot(df, aes(x = `number of trees`, y = `Error Rate`,color = type)) + 
+  geom_line()
+```
+
+```{r}
+varImpPlot(rf)
+```
+
+```{r}
+# log_reg diag
+probabilities <- predict(log_reg, type = "response")
+try <- data_block %>% 
+  select(-expert, -Image, -block) %>% 
+  mutate(logit = log(probabilities/(1-probabilities))) %>%
+  gather(key = "predictors", value = "predictor.value", -logit)
+ggplot(try, aes(logit, predictor.value))+
+  geom_point(size = 0.5, alpha = 0.5) +
+  geom_smooth(method = "loess", se = FALSE) + 
+  theme_bw() + 
+  facet_wrap(~predictors, scales = "free_y")
+```
+
